@@ -201,6 +201,11 @@ function requireAdmin() {
     }
 }
 
+// Privacy function: allow only author or admin to view a post
+function canAccessPost($post_user_id) {
+    return (isAdmin() || (isLoggedIn() && $_SESSION['user_id'] == $post_user_id));
+}
+
 // Handle actions
 $action = $_GET['action'] ?? '';
 $page = $_GET['page'] ?? 'home';
@@ -372,31 +377,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $content = trim($_POST['content']);
             
             if ($content) {
+                // Only allow reply if user is admin or post author
+                $stmt = $pdo->prepare("SELECT user_id, title FROM posts WHERE id = ?");
+                $stmt->execute([$post_id]);
+                $post_info = $stmt->fetch();
+                if (!$post_info || !canAccessPost($post_info['user_id'])) {
+                    $error = "You do not have permission to reply to this post.";
+                    break;
+                }
+
                 $stmt = $pdo->prepare("INSERT INTO replies (post_id, user_id, content) VALUES (?, ?, ?)");
                 $stmt->execute([$post_id, $_SESSION['user_id'], $content]);
 
-// notify user and admins of reply to post
-                
-                // Get title of post
-                $stmt = $pdo->prepare("SELECT title FROM posts WHERE id = ?");
-                $stmt->execute([$post_id]);
-                $title = $stmt->fetch();
-
-                // Get author id of post
-                $stmt = $pdo->prepare("SELECT user_id FROM posts WHERE id = ?");
-                $stmt->execute([$post_id]);
-                $author_id = $stmt->fetch();
-             
+                // notify user and admins of reply to post
                 // Get author email for notification
                 $stmt = $pdo->prepare("SELECT email FROM users WHERE id = ?");
-                $stmt->execute([$author_id['user_id']]);
+                $stmt->execute([$post_info['user_id']]);
                 $user = $stmt->fetch();
                 
                 // Send notifications
-                sendReplyNotificationToAdmin($title['title'], $_SESSION['username']);
-                sendReplyNotificationToUser($user['email'], $title['title']);
+                sendReplyNotificationToAdmin($post_info['title'], $_SESSION['username']);
+                sendReplyNotificationToUser($user['email'], $post_info['title']);
 
-//
                 header('Location: ?page=post&id=' . $post_id);
                 exit;
             }
@@ -482,14 +484,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Get data for display
 if ($page === 'home') {
-    $stmt = $pdo->query("SELECT p.*, u.username FROM posts p JOIN users u ON p.user_id = u.id ORDER BY p.created_at DESC");
-    $posts = $stmt->fetchAll();
+    // Only show posts for the current user or all if admin
+    if (isAdmin()) {
+        $stmt = $pdo->query("SELECT p.*, u.username FROM posts p JOIN users u ON p.user_id = u.id ORDER BY p.created_at DESC");
+        $posts = $stmt->fetchAll();
+    } elseif (isLoggedIn()) {
+        $stmt = $pdo->prepare("SELECT p.*, u.username FROM posts p JOIN users u ON p.user_id = u.id WHERE p.user_id = ? ORDER BY p.created_at DESC");
+        $stmt->execute([$_SESSION['user_id']]);
+        $posts = $stmt->fetchAll();
+    } else {
+        // For guests, show nothing (private forum)
+        $posts = [];
+    }
 } elseif ($page === 'post') {
     $post_id = $_GET['id'] ?? 0;
     $stmt = $pdo->prepare("SELECT p.*, u.username FROM posts p JOIN users u ON p.user_id = u.id WHERE p.id = ?");
     $stmt->execute([$post_id]);
     $post = $stmt->fetch();
     
+    if ($post && !canAccessPost($post['user_id'])) {
+        $post = false;
+        $error = "You do not have permission to view this post.";
+    }
     if ($post) {
         $stmt = $pdo->prepare("SELECT r.*, u.username FROM replies r JOIN users u ON r.user_id = u.id WHERE r.post_id = ? ORDER BY r.created_at ASC");
         $stmt->execute([$post_id]);
@@ -1013,7 +1029,7 @@ if ($page === 'home') {
                 <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
                     <h3 style="color: #dc3545; margin-bottom: 15px;">Danger Zone</h3>
                     <p style="margin-bottom: 15px; color: #666;">Deleting your account is permanent and cannot be undone. All your posts and replies will be deleted.</p>
-                    <form method="post" action="?action=delete_my_account" onsubmit="return confirm('Are you absolutely sure you want to delete your account? This action cannot be undone and all your data will be permanently deleted!')">
+                    <form method="post" action="?action=delete_my_account" onsubmit="return confirm('Are you absolutely sure you want to delete your account? This action cannot be undone and all your posts and replies will be deleted.')">
                         <button type="submit" class="btn btn-danger">Delete My Account</button>
                     </form>
                 </div>
