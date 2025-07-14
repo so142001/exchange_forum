@@ -7,6 +7,25 @@ $dbname = 'exchange_db';
 $username = 'root';
 $password = '';
 
+// Generate simple math captcha
+function generateCaptcha() {
+    $num1 = rand(1, 10);
+    $num2 = rand(1, 10);
+    $answer = $num1 + $num2;
+    $_SESSION['captcha_answer'] = $answer;
+    return "$num1 + $num2 = ?";
+}
+
+// Verify captcha
+function verifyCaptcha($userAnswer) {
+    if (!isset($_SESSION['captcha_answer'])) {
+        return false;
+    }
+    $correct = $_SESSION['captcha_answer'] == $userAnswer;
+    unset($_SESSION['captcha_answer']);
+    return $correct;
+}
+
 // Create database connection
 try {
     $pdo = new PDO("mysql:host=$host;dbname=$dbname", $username, $password);
@@ -89,8 +108,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $email = sanitize($_POST['email']);
             $password = $_POST['password'];
             $confirmPassword = $_POST['confirm_password'];
+            $captchaAnswer = $_POST['captcha_answer'];
             
-            if ($password !== $confirmPassword) {
+            if (!verifyCaptcha($captchaAnswer)) {
+                $error = "Captcha verification failed. Please try again.";
+            } elseif ($password !== $confirmPassword) {
                 $error = "Passwords do not match";
             } else {
                 try {
@@ -191,31 +213,40 @@ function renderPage($page, $pdo) {
 }
 
 function renderRegister() {
-    return '
-    <div class="form-container">
+    $captchaQuestion = generateCaptcha();
+    return "
+    <div class=\"form-container\">
         <h2>Register</h2>
-        <form method="POST">
-            <input type="hidden" name="action" value="register">
-            <div class="form-group">
+        <form method=\"POST\">
+            <input type=\"hidden\" name=\"action\" value=\"register\">
+            <div class=\"form-group\">
                 <label>Username:</label>
-                <input type="text" name="username" required>
+                <input type=\"text\" name=\"username\" required>
             </div>
-            <div class="form-group">
+            <div class=\"form-group\">
                 <label>Email:</label>
-                <input type="email" name="email" required>
+                <input type=\"email\" name=\"email\" required>
             </div>
-            <div class="form-group">
+            <div class=\"form-group\">
                 <label>Password:</label>
-                <input type="password" name="password" required>
+                <input type=\"password\" name=\"password\" required>
             </div>
-            <div class="form-group">
+            <div class=\"form-group\">
                 <label>Confirm Password:</label>
-                <input type="password" name="confirm_password" required>
+                <input type=\"password\" name=\"confirm_password\" required>
             </div>
-            <button type="submit">Register</button>
+            <div class=\"form-group captcha-group\">
+                <label>Anti-Bot Verification:</label>
+                <div class=\"captcha-box\">
+                    <span class=\"captcha-question\">$captchaQuestion</span>
+                    <input type=\"number\" name=\"captcha_answer\" placeholder=\"Enter answer\" required>
+                </div>
+                <small>Please solve the math problem above to prove you're human</small>
+            </div>
+            <button type=\"submit\">Register</button>
         </form>
-        <p><a href="?page=login">Already have an account? Login</a></p>
-    </div>';
+        <p><a href=\"?page=login\">Already have an account? Login</a></p>
+    </div>";
 }
 
 function renderLogin() {
@@ -281,6 +312,7 @@ function renderForum($pdo) {
     
     $action = $_GET['action'] ?? '';
     $username = $_SESSION['username'];
+    $userId = $_SESSION['user_id'];
     
     if ($action == 'new') {
         return '
@@ -302,67 +334,73 @@ function renderForum($pdo) {
         </div>';
     }
     
-    // Get forum posts
+    // Get forum posts for current user only
     $stmt = $pdo->prepare("
         SELECT p.id, p.title, p.content, p.created_at, u.username
         FROM forum_posts p
         JOIN users u ON p.user_id = u.id
+        WHERE p.user_id = ?
         ORDER BY p.created_at DESC
     ");
-    $stmt->execute();
+    $stmt->execute([$userId]);
     $posts = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     $forumContent = "
     <div class=\"forum-container\">
         <div class=\"forum-header\">
-            <h2>Forum</h2>
+            <h2>My Posts</h2>
             <div class=\"forum-actions\">
                 <a href=\"?page=forum&action=new\" class=\"btn-primary\">New Post</a>
                 <a href=\"?page=dashboard\" class=\"btn-secondary\">Back to Dashboard</a>
             </div>
-        </div>";
+        </div>
+        <p class=\"forum-info\">You can only see posts and replies associated with your account.</p>";
     
-    foreach ($posts as $post) {
-        $postId = $post['id'];
-        $forumContent .= "
-        <div class=\"post\">
-            <h3>{$post['title']}</h3>
-            <p class=\"post-meta\">By {$post['username']} on {$post['created_at']}</p>
-            <div class=\"post-content\">{$post['content']}</div>";
-        
-        // Get replies
-        $stmt = $pdo->prepare("
-            SELECT r.content, r.created_at, u.username
-            FROM forum_replies r
-            JOIN users u ON r.user_id = u.id
-            WHERE r.post_id = ?
-            ORDER BY r.created_at ASC
-        ");
-        $stmt->execute([$postId]);
-        $replies = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        if ($replies) {
-            $forumContent .= "<div class=\"replies\">";
-            foreach ($replies as $reply) {
-                $forumContent .= "
-                <div class=\"reply\">
-                    <p class=\"reply-meta\">Reply by {$reply['username']} on {$reply['created_at']}</p>
-                    <div class=\"reply-content\">{$reply['content']}</div>
-                </div>";
+    if (empty($posts)) {
+        $forumContent .= "<div class=\"no-posts\">You haven't created any posts yet. <a href=\"?page=forum&action=new\">Create your first post</a></div>";
+    } else {
+        foreach ($posts as $post) {
+            $postId = $post['id'];
+            $forumContent .= "
+            <div class=\"post\">
+                <h3>{$post['title']}</h3>
+                <p class=\"post-meta\">By {$post['username']} on {$post['created_at']}</p>
+                <div class=\"post-content\">{$post['content']}</div>";
+            
+            // Get replies for this post (only replies by current user)
+            $stmt = $pdo->prepare("
+                SELECT r.content, r.created_at, u.username
+                FROM forum_replies r
+                JOIN users u ON r.user_id = u.id
+                WHERE r.post_id = ? AND r.user_id = ?
+                ORDER BY r.created_at ASC
+            ");
+            $stmt->execute([$postId, $userId]);
+            $replies = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            if ($replies) {
+                $forumContent .= "<div class=\"replies\">";
+                foreach ($replies as $reply) {
+                    $forumContent .= "
+                    <div class=\"reply\">
+                        <p class=\"reply-meta\">Reply by {$reply['username']} on {$reply['created_at']}</p>
+                        <div class=\"reply-content\">{$reply['content']}</div>
+                    </div>";
+                }
+                $forumContent .= "</div>";
             }
-            $forumContent .= "</div>";
+            
+            $forumContent .= "
+                <form method=\"POST\" class=\"reply-form\">
+                    <input type=\"hidden\" name=\"action\" value=\"create_reply\">
+                    <input type=\"hidden\" name=\"post_id\" value=\"$postId\">
+                    <div class=\"form-group\">
+                        <textarea name=\"content\" placeholder=\"Add a reply to your post...\" rows=\"3\" required></textarea>
+                    </div>
+                    <button type=\"submit\">Add Reply</button>
+                </form>
+            </div>";
         }
-        
-        $forumContent .= "
-            <form method=\"POST\" class=\"reply-form\">
-                <input type=\"hidden\" name=\"action\" value=\"create_reply\">
-                <input type=\"hidden\" name=\"post_id\" value=\"$postId\">
-                <div class=\"form-group\">
-                    <textarea name=\"content\" placeholder=\"Write a reply...\" rows=\"3\" required></textarea>
-                </div>
-                <button type=\"submit\">Reply</button>
-            </form>
-        </div>";
     }
     
     $forumContent .= "</div>";
@@ -689,6 +727,66 @@ function renderAdmin($pdo) {
         .actions button {
             padding: 4px 8px;
             font-size: 12px;
+        }
+
+        .captcha-group {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .captcha-box {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 5px;
+        }
+
+        .captcha-question {
+            background-color: #e9ecef;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-family: monospace;
+            font-size: 16px;
+            color: #495057;
+            border: 1px solid #ced4da;
+        }
+
+        .captcha-box input {
+            width: 100px;
+            text-align: center;
+        }
+
+        .captcha-group small {
+            color: #6c757d;
+            font-size: 12px;
+        }
+
+        .forum-info {
+            background-color: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 10px 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            color: #1976d2;
+        }
+
+        .no-posts {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+
+        .no-posts a {
+            color: #3498db;
+            text-decoration: none;
+            font-weight: bold;
         }
 
         .error {
