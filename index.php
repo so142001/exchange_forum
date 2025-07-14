@@ -57,7 +57,7 @@ try {
 
 // Email functions
 function sendVerificationEmail($email, $code, $user_id) {
-    global $smtp_host, $smtp_port, $smtp_username, $smtp_password;
+    global $smtp_host, $smtp_port, $smtp_username, $smtp_password, $from_email;
     
     $base_url = "http://" . $_SERVER['HTTP_HOST'] . $_SERVER['PHP_SELF'];
     $verification_link = $base_url . "?action=verify_link&code=" . $code . "&user_id=" . $user_id;
@@ -70,14 +70,16 @@ function sendVerificationEmail($email, $code, $user_id) {
     $message .= "2. Or enter the code manually on the verification page\n\n";
     $message .= "Thank you for joining our community!";
     
-    $headers = "From: $GLOBALS["from_email"]\r\n";
-    $headers .= "Reply-To: $GLOBALS["from_email"]\r\n";
+    $headers = "From: $from_email\r\n";
+    $headers .= "Reply-To: $from_email\r\n";
     $headers .= "X-Mailer: PHP/" . phpversion();
     
     return mail($email, $subject, $message, $headers);
 }
 
 function sendWelcomeEmail($email, $username) {
+    global $from_email;
+
     $subject = "Welcome to Exchange Forum!";
     $message = "Hi $username,\n\n";
     $message .= "Welcome to Exchange Forum! Your account has been successfully verified.\n\n";
@@ -88,15 +90,15 @@ function sendWelcomeEmail($email, $username) {
     $message .= "Thank you for joining us!\n\n";
     $message .= "Best regards,\nExchange Forum Team";
     
-    $headers = "From: $GLOBALS["from_email"]\r\n";
-    $headers .= "Reply-To: $GLOBALS["from_email"]\r\n";
+    $headers = "From: $from_email\r\n";
+    $headers .= "Reply-To: $from_email\r\n";
     $headers .= "X-Mailer: PHP/" . phpversion();
     
     return mail($email, $subject, $message, $headers);
 }
 
 function sendPostNotificationToAdmin($post_title, $author_username) {
-    global $pdo;
+    global $pdo, $from_email;
     
     // Get all admin emails
     $stmt = $pdo->query("SELECT email FROM users WHERE is_admin = TRUE");
@@ -108,8 +110,8 @@ function sendPostNotificationToAdmin($post_title, $author_username) {
     $message .= "Author: $author_username\n\n";
     $message .= "Please review the post in the admin panel.";
     
-    $headers = "From: $GLOBALS["from_email"]\r\n";
-    $headers .= "Reply-To: $GLOBALS["from_email"]\r\n";
+    $headers = "From: $from_email\r\n";
+    $headers .= "Reply-To: $from_email\r\n";
     $headers .= "X-Mailer: PHP/" . phpversion();
     
     foreach ($admins as $admin) {
@@ -118,12 +120,14 @@ function sendPostNotificationToAdmin($post_title, $author_username) {
 }
 
 function sendPostNotificationToUser($user_email, $post_title) {
+    global $from_email;
+
     $subject = "Your Post Has Been Published - Exchange Forum";
     $message = "Your post \"$post_title\" has been successfully published on Exchange Forum.\n\n";
     $message .= "Thank you for contributing to our community!";
     
-    $headers = "From: $GLOBALS["from_email"]\r\n";
-    $headers .= "Reply-To: $GLOBALS["from_email"]\r\n";
+    $headers = "From: $from_email\r\n";
+    $headers .= "Reply-To: $from_email\r\n";
     $headers .= "X-Mailer: PHP/" . phpversion();
     
     return mail($user_email, $subject, $message, $headers);
