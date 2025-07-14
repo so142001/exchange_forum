@@ -70,8 +70,8 @@ function sendVerificationEmail($email, $code, $user_id) {
     $message .= "2. Or enter the code manually on the verification page\n\n";
     $message .= "Thank you for joining our community!";
     
-    $headers = "From: $from_email\r\n";
-    $headers .= "Reply-To: $from_email\r\n";
+    $headers = "From: $GLOBALS["from_email"]\r\n";
+    $headers .= "Reply-To: $GLOBALS["from_email"]\r\n";
     $headers .= "X-Mailer: PHP/" . phpversion();
     
     return mail($email, $subject, $message, $headers);
@@ -88,8 +88,8 @@ function sendWelcomeEmail($email, $username) {
     $message .= "Thank you for joining us!\n\n";
     $message .= "Best regards,\nExchange Forum Team";
     
-    $headers = "From: $from_email\r\n";
-    $headers .= "Reply-To: $from_email\r\n";
+    $headers = "From: $GLOBALS["from_email"]\r\n";
+    $headers .= "Reply-To: $GLOBALS["from_email"]\r\n";
     $headers .= "X-Mailer: PHP/" . phpversion();
     
     return mail($email, $subject, $message, $headers);
@@ -108,8 +108,8 @@ function sendPostNotificationToAdmin($post_title, $author_username) {
     $message .= "Author: $author_username\n\n";
     $message .= "Please review the post in the admin panel.";
     
-    $headers = "From: $from_email\r\n";
-    $headers .= "Reply-To: $from_email\r\n";
+    $headers = "From: $GLOBALS["from_email"]\r\n";
+    $headers .= "Reply-To: $GLOBALS["from_email"]\r\n";
     $headers .= "X-Mailer: PHP/" . phpversion();
     
     foreach ($admins as $admin) {
@@ -122,8 +122,8 @@ function sendPostNotificationToUser($user_email, $post_title) {
     $message = "Your post \"$post_title\" has been successfully published on Exchange Forum.\n\n";
     $message .= "Thank you for contributing to our community!";
     
-    $headers = "From: $from_email\r\n";
-    $headers .= "Reply-To: $from_email\r\n";
+    $headers = "From: $GLOBALS["from_email"]\r\n";
+    $headers .= "Reply-To: $GLOBALS["from_email"]\r\n";
     $headers .= "X-Mailer: PHP/" . phpversion();
     
     return mail($user_email, $subject, $message, $headers);
