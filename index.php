@@ -266,7 +266,6 @@ function renderLogin() {
             <button type="submit">Login</button>
         </form>
         <p><a href="?page=register">Don\'t have an account? Register</a></p>
-        <p><em>Admin login: admin / admin123</em></p>
     </div>';
 }
 
@@ -313,6 +312,7 @@ function renderForum($pdo) {
     $action = $_GET['action'] ?? '';
     $username = $_SESSION['username'];
     $userId = $_SESSION['user_id'];
+    $isAdmin = isAdmin();
     
     if ($action == 'new') {
         return '
@@ -334,55 +334,95 @@ function renderForum($pdo) {
         </div>';
     }
     
-    // Get forum posts for current user only
-    $stmt = $pdo->prepare("
-        SELECT p.id, p.title, p.content, p.created_at, u.username
-        FROM forum_posts p
-        JOIN users u ON p.user_id = u.id
-        WHERE p.user_id = ?
-        ORDER BY p.created_at DESC
-    ");
-    $stmt->execute([$userId]);
+    // Get forum posts based on user role
+    if ($isAdmin) {
+        // Admin can see all posts
+        $stmt = $pdo->prepare("
+            SELECT p.id, p.title, p.content, p.created_at, u.username, p.user_id
+            FROM forum_posts p
+            JOIN users u ON p.user_id = u.id
+            ORDER BY p.created_at DESC
+        ");
+        $stmt->execute();
+        $headerTitle = "All Posts (Admin View)";
+    } else {
+        // Regular users see only their own posts
+        $stmt = $pdo->prepare("
+            SELECT p.id, p.title, p.content, p.created_at, u.username, p.user_id
+            FROM forum_posts p
+            JOIN users u ON p.user_id = u.id
+            WHERE p.user_id = ?
+            ORDER BY p.created_at DESC
+        ");
+        $stmt->execute([$userId]);
+        $headerTitle = "My Posts";
+    }
+    
     $posts = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     $forumContent = "
     <div class=\"forum-container\">
         <div class=\"forum-header\">
-            <h2>My Posts</h2>
+            <h2>$headerTitle</h2>
             <div class=\"forum-actions\">
                 <a href=\"?page=forum&action=new\" class=\"btn-primary\">New Post</a>
                 <a href=\"?page=dashboard\" class=\"btn-secondary\">Back to Dashboard</a>
             </div>
-        </div>
-        <p class=\"forum-info\">You can only see posts and replies associated with your account.</p>";
+        </div>";
     
     if (empty($posts)) {
-        $forumContent .= "<div class=\"no-posts\">You haven't created any posts yet. <a href=\"?page=forum&action=new\">Create your first post</a></div>";
+        $emptyMessage = $isAdmin ? "No posts have been created yet." : "You haven't created any posts yet. <a href=\"?page=forum&action=new\">Create your first post</a>";
+        $forumContent .= "<div class=\"no-posts\">$emptyMessage</div>";
     } else {
         foreach ($posts as $post) {
             $postId = $post['id'];
+            $postUserId = $post['user_id'];
             $forumContent .= "
             <div class=\"post\">
                 <h3>{$post['title']}</h3>
                 <p class=\"post-meta\">By {$post['username']} on {$post['created_at']}</p>
                 <div class=\"post-content\">{$post['content']}</div>";
             
-            // Get replies for this post (only replies by current user)
-            $stmt = $pdo->prepare("
-                SELECT r.content, r.created_at, u.username
-                FROM forum_replies r
-                JOIN users u ON r.user_id = u.id
-                WHERE r.post_id = ? AND r.user_id = ?
-                ORDER BY r.created_at ASC
-            ");
-            $stmt->execute([$postId, $userId]);
+            // Get replies for this post
+            if ($isAdmin) {
+                // Admin can see all replies
+                $stmt = $pdo->prepare("
+                    SELECT r.content, r.created_at, u.username, r.user_id
+                    FROM forum_replies r
+                    JOIN users u ON r.user_id = u.id
+                    WHERE r.post_id = ?
+                    ORDER BY r.created_at ASC
+                ");
+                $stmt->execute([$postId]);
+            } else {
+                // Regular users see their own replies + admin replies
+                $stmt = $pdo->prepare("
+                    SELECT r.content, r.created_at, u.username, r.user_id
+                    FROM forum_replies r
+                    JOIN users u ON r.user_id = u.id
+                    WHERE r.post_id = ? AND (r.user_id = ? OR u.is_admin = 1)
+                    ORDER BY r.created_at ASC
+                ");
+                $stmt->execute([$postId, $userId]);
+            }
+            
             $replies = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
             if ($replies) {
                 $forumContent .= "<div class=\"replies\">";
                 foreach ($replies as $reply) {
+                    $replyClass = '';
+                    // Check if reply is from admin
+                    $replyStmt = $pdo->prepare("SELECT is_admin FROM users WHERE id = ?");
+                    $replyStmt->execute([$reply['user_id']]);
+                    $isReplyFromAdmin = $replyStmt->fetchColumn();
+                    
+                    if ($isReplyFromAdmin) {
+                        $replyClass = 'admin-reply';
+                    }
+                    
                     $forumContent .= "
-                    <div class=\"reply\">
+                    <div class=\"reply $replyClass\">
                         <p class=\"reply-meta\">Reply by {$reply['username']} on {$reply['created_at']}</p>
                         <div class=\"reply-content\">{$reply['content']}</div>
                     </div>";
@@ -390,16 +430,31 @@ function renderForum($pdo) {
                 $forumContent .= "</div>";
             }
             
-            $forumContent .= "
-                <form method=\"POST\" class=\"reply-form\">
-                    <input type=\"hidden\" name=\"action\" value=\"create_reply\">
-                    <input type=\"hidden\" name=\"post_id\" value=\"$postId\">
-                    <div class=\"form-group\">
-                        <textarea name=\"content\" placeholder=\"Add a reply to your post...\" rows=\"3\" required></textarea>
-                    </div>
-                    <button type=\"submit\">Add Reply</button>
-                </form>
-            </div>";
+            // Show reply form based on permissions
+            $canReply = false;
+            $replyPlaceholder = "";
+            
+            if ($isAdmin) {
+                $canReply = true;
+                $replyPlaceholder = "Reply as admin to {$post['username']}'s post...";
+            } elseif ($postUserId == $userId) {
+                $canReply = true;
+                $replyPlaceholder = "Add a reply to your post...";
+            }
+            
+            if ($canReply) {
+                $forumContent .= "
+                    <form method=\"POST\" class=\"reply-form\">
+                        <input type=\"hidden\" name=\"action\" value=\"create_reply\">
+                        <input type=\"hidden\" name=\"post_id\" value=\"$postId\">
+                        <div class=\"form-group\">
+                            <textarea name=\"content\" placeholder=\"$replyPlaceholder\" rows=\"3\" required></textarea>
+                        </div>
+                        <button type=\"submit\">Add Reply</button>
+                    </form>";
+            }
+            
+            $forumContent .= "</div>";
         }
     }
     
@@ -763,6 +818,25 @@ function renderAdmin($pdo) {
         .captcha-group small {
             color: #6c757d;
             font-size: 12px;
+        }
+
+        .admin-reply {
+            background: #e8f5e8;
+            border-left: 3px solid #28a745;
+            position: relative;
+        }
+
+        .admin-reply::before {
+            content: "ADMIN";
+            position: absolute;
+            top: 5px;
+            right: 10px;
+            background: #28a745;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: bold;
         }
 
         .forum-info {
