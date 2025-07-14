@@ -544,7 +544,7 @@ if ($page === 'home') {
         }
         
         .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #2c3e50;
             color: white;
             padding: 20px 0;
             margin-bottom: 30px;
