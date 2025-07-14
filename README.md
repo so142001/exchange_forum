@@ -32,12 +32,22 @@ The application will automatically create the necessary MySQL tables:
 - `forum_replies` - Replies to posts
 
 ## Configuration:
-Before using, update the database connection settings at the top of the file:
+Before using, update the Database and email configuragion settings at the top of the file:
 ```php
+// From email for sending emails
+$from_email = 'noreply@exchangeforum.com';
+
+// Database configuration
 $host = 'localhost';
-$dbname = 'exchange_db';
+$dbname = 'exchange_forum';
 $username = 'root';
 $password = '';
+
+// Email configuration (using PHPMailer or similar)
+$smtp_host = 'smtp.gmail.com';
+$smtp_port = 587;
+$smtp_username = 'your_email@gmail.com';
+$smtp_password = 'your_app_password';
 ```
 
 ## Security Features:
