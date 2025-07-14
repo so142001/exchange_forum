@@ -2,6 +2,7 @@
 session_start();
 
 // From email for sending emails
+$forum_name = 'Exchange Forum';
 $from_email = 'noreply@exchangeforum.com';
 
 // Database configuration
@@ -57,13 +58,13 @@ try {
 
 // Email functions
 function sendVerificationEmail($email, $code, $user_id) {
-    global $smtp_host, $smtp_port, $smtp_username, $smtp_password, $from_email;
+    global $smtp_host, $smtp_port, $smtp_username, $smtp_password, $from_email, $forum_name;
     
-    $base_url = "http://" . $_SERVER['HTTP_HOST'] . $_SERVER['PHP_SELF'];
+    $base_url = "https://" . $_SERVER['HTTP_HOST'] . $_SERVER['PHP_SELF'];
     $verification_link = $base_url . "?action=verify_link&code=" . $code . "&user_id=" . $user_id;
     
-    $subject = "Verify Your Account - Exchange Forum";
-    $message = "Welcome to Exchange Forum!\n\n";
+    $subject = "Verify Your Account - $forum_name";
+    $message = "Welcome to $forum_name!\n\n";
     $message .= "Your verification code is: $code\n\n";
     $message .= "You can either:\n";
     $message .= "1. Click this link to verify automatically: $verification_link\n";
@@ -78,17 +79,17 @@ function sendVerificationEmail($email, $code, $user_id) {
 }
 
 function sendWelcomeEmail($email, $username) {
-    global $from_email;
+    global $from_email, $forum_name;
 
-    $subject = "Welcome to Exchange Forum!";
+    $subject = "Welcome to $forum_name!";
     $message = "Hi $username,\n\n";
-    $message .= "Welcome to Exchange Forum! Your account has been successfully verified.\n\n";
+    $message .= "Welcome to $forum_name! Your account has been successfully verified.\n\n";
     $message .= "You can now:\n";
     $message .= "- Create posts and share your thoughts\n";
     $message .= "- Reply to other users' posts\n";
     $message .= "- Engage with our community\n\n";
     $message .= "Thank you for joining us!\n\n";
-    $message .= "Best regards,\nExchange Forum Team";
+    $message .= "Best regards,\n$forum_name Team";
     
     $headers = "From: $from_email\r\n";
     $headers .= "Reply-To: $from_email\r\n";
@@ -98,13 +99,13 @@ function sendWelcomeEmail($email, $username) {
 }
 
 function sendPostNotificationToAdmin($post_title, $author_username) {
-    global $pdo, $from_email;
+    global $pdo, $from_email, $forum_name;
     
     // Get all admin emails
     $stmt = $pdo->query("SELECT email FROM users WHERE is_admin = TRUE");
     $admins = $stmt->fetchAll();
     
-    $subject = "New Post Submitted - Exchange Forum";
+    $subject = "New Post Submitted - $forum_name";
     $message = "A new post has been submitted:\n\n";
     $message .= "Title: $post_title\n";
     $message .= "Author: $author_username\n\n";
@@ -120,10 +121,49 @@ function sendPostNotificationToAdmin($post_title, $author_username) {
 }
 
 function sendPostNotificationToUser($user_email, $post_title) {
-    global $from_email;
+    global $from_email, $forum_name;
 
-    $subject = "Your Post Has Been Published - Exchange Forum";
-    $message = "Your post \"$post_title\" has been successfully published on Exchange Forum.\n\n";
+    $subject = "Your Post Has Been Published - $forum_name";
+    $message = "Your post \"$post_title\" has been successfully published on $forum_name.\n\n";
+    $message .= "Thank you for contributing to our community!";
+    
+    $headers = "From: $from_email\r\n";
+    $headers .= "Reply-To: $from_email\r\n";
+    $headers .= "X-Mailer: PHP/" . phpversion();
+    
+    return mail($user_email, $subject, $message, $headers);
+}
+
+function sendReplyNotificationToAdmin($post_title, $author_username) {
+    global $pdo, $from_email, $forum_name;
+    
+    // Get all admin emails
+    $stmt = $pdo->query("SELECT email FROM users WHERE is_admin = TRUE");
+    $admins = $stmt->fetchAll();
+    
+    $subject = "Notification of reply - $forum_name";
+    $message = "A new reply has been submitted:\n\n";
+    $message .= "Title: $post_title\n";
+    $message .= "Author: $author_username\n\n";
+    $message .= "Please review the reply in the admin panel.";
+    
+    $headers = "From: $from_email\r\n";
+    $headers .= "Reply-To: $from_email\r\n";
+    $headers .= "X-Mailer: PHP/" . phpversion();
+    
+    foreach ($admins as $admin) {
+        mail($admin['email'], $subject, $message, $headers);
+    }
+}
+
+function sendReplyNotificationToUser($user_email, $post_title) {
+    global $from_email, $forum_name;
+
+    $base_url = "https://" . $_SERVER['HTTP_HOST'] . $_SERVER['PHP_SELF'];
+
+    $subject = "Notification of reply - $forum_name";
+    $message = "A reply to your post \"$post_title\" has been published on $forum_name.\n";
+    $message .= "To view replies to your post, please log in: $base_url\n\n";
     $message .= "Thank you for contributing to our community!";
     
     $headers = "From: $from_email\r\n";
@@ -185,7 +225,7 @@ if ($action === 'verify_link') {
             $_SESSION['user_id'] = $user['id'];
             $_SESSION['username'] = $user['username'];
             $_SESSION['is_admin'] = $user['is_admin'];
-            $_SESSION['success'] = "Account verified successfully! Welcome to Exchange Forum.";
+            $_SESSION['success'] = "Account verified successfully! Welcome to $forum_name.";
             
             header('Location: ?page=home');
             exit;
@@ -252,7 +292,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_SESSION['user_id'] = $user['id'];
                     $_SESSION['username'] = $user['username'];
                     $_SESSION['is_admin'] = $user['is_admin'];
-                    $_SESSION['success'] = "Account verified successfully! Welcome to Exchange Forum.";
+                    $_SESSION['success'] = "Account verified successfully! Welcome to $forum_name.";
                     
                     header('Location: ?page=home');
                     exit;
@@ -334,6 +374,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($content) {
                 $stmt = $pdo->prepare("INSERT INTO replies (post_id, user_id, content) VALUES (?, ?, ?)");
                 $stmt->execute([$post_id, $_SESSION['user_id'], $content]);
+
+// notify user and admins of reply to post
+                
+                // Get title of post
+                $stmt = $pdo->prepare("SELECT title FROM posts WHERE id = ?");
+                $stmt->execute([$post_id]);
+                $title = $stmt->fetch();
+
+                // Get author id of post
+                $stmt = $pdo->prepare("SELECT user_id FROM posts WHERE id = ?");
+                $stmt->execute([$post_id]);
+                $author_id = $stmt->fetch();
+             
+                // Get author email for notification
+                $stmt = $pdo->prepare("SELECT email FROM users WHERE id = ?");
+                $stmt->execute([$author_id['user_id']]);
+                $user = $stmt->fetch();
+                
+                // Send notifications
+                sendReplyNotificationToAdmin($title['title'], $_SESSION['username']);
+                sendReplyNotificationToUser($user['email'], $title['title']);
+
+//
                 header('Location: ?page=post&id=' . $post_id);
                 exit;
             }
@@ -444,7 +507,7 @@ if ($page === 'home') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Exchange Forum</title>
+    <title><?php echo $forum_name; ?></title>
     <style>
         * {
             margin: 0;
@@ -658,7 +721,7 @@ if ($page === 'home') {
 <body>
     <div class="container">
         <div class="header">
-            <h1>Exchange Forum</h1>
+            <h1><?php echo $forum_name; ?></h1>
             <nav class="nav">
                 <a href="?page=home">Home</a>
                 <?php if (isLoggedIn()): ?>
@@ -694,12 +757,12 @@ if ($page === 'home') {
         <?php endif; ?>
         
         <?php if (isset($_GET['deleted'])): ?>
-            <div class="success">Your account has been successfully deleted. Thank you for using Exchange Forum.</div>
+            <div class="success">Your account has been successfully deleted. Thank you for using <?php echo $forum_name; ?>.</div>
         <?php endif; ?>
 
         <?php if ($page === 'home'): ?>
             <div class="card">
-                <h2>Welcome to Exchange Forum</h2>
+                <h2>Welcome to <?php echo $forum_name; ?></h2>
                 <p>Share your thoughts, ask questions, and engage with the community!</p>
             </div>
 
