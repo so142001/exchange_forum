@@ -1,7 +1,5 @@
 # exchange_forum
-Exchange Forum: a PHP exchange application with the features you requested. However, I need to clarify that I cannot access or copy source code from cryptex.ca or any other website, as that would involve reproducing copyrighted material. Instead, I'll create an original PHP application with the features you specified.
-
-Let me create a complete single-file PHP application with user registration, login/logout, admin functionality, and a communication forum:I've created a complete PHP exchange application with all the features you requested. Here's what's included:
+Exchange Forum: a PHP exchange forum application. A single-file PHP application with user registration, login/logout, admin functionality, and a communication forum. Here's what's included:
 
 ## Key Features:
 
@@ -28,13 +26,14 @@ Let me create a complete single-file PHP application with user registration, log
 ## Database Setup:
 The application will automatically create the necessary MySQL tables:
 - `users` - User accounts and admin status
-- `forum_posts` - Forum posts
-- `forum_replies` - Replies to posts
+- `posts` - Forum posts
+- `replies` - Replies to posts
 
 ## Configuration:
 Before using, update the Database and email configuragion settings at the top of the file:
 ```php
 // From email for sending emails
+$forum_name = 'Exchange Forum';
 $from_email = 'noreply@exchangeforum.com';
 
 // Database configuration
